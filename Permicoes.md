@@ -1,10 +1,23 @@
-provider "aws" {
-  region = "us-east-1"  # Update with your desired region
-}
-############################################################################################################################
+# Permições
 
+<aside>
+💡 Dica: cuidado com as chaves abertas e fechadas, durante a explicação algumas chaves podem ter seu par em outro segmento de codigo.
+
+</aside>
+
+Pelo modelo de permições da AWS, é necessario criarmos uma serie de *roles,* que funcionam como cargos, e atribuir *******policies,******* ou autorizações, para cada ação em cada tipo de instancia.
+
+Para orgainzar melhor, foi criado um role para cada instancia, e uma serie de policies a partir do alvo de cada ação, e por fim foram atribuidas essas politicas para os roles cabiveis. Mais detalhes [sobre roles](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html) ou [sobre policies](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html) estão disponivies na documentação da AWS.
+
+## *Roles*
+
+### EC2
+
+A intancia EC2 recebe um tratamento um pouco diferente, pois alem do seu role, também é preciso a criação de um *security group* e um *instance profile,* o primeiro responsavel pelas definiçoes de entrada e saida de rede da instancia, e o segundo, que apenas linka o role com a instancia propriamente.
+
+```makefile
 resource "aws_security_group" "sec_grp" {
-  name        = "sec_grp"
+  name        = "example-sg"
   description = "Example security group"
 
   ingress {
@@ -34,10 +47,8 @@ resource "aws_security_group" "sec_grp" {
   }
 }
 
-
-
 resource "aws_iam_role" "ec2_role" {
-  name = "ec2-role"
+  name = "example-ec2-role"
   assume_role_policy = <<EOF
 {
   "Version": "2012-10-17",
@@ -56,12 +67,20 @@ EOF
 }
 # IAM Instance Profile
 resource "aws_iam_instance_profile" "instance_profile" {
-  name = "instance-profile"
+  name = "example-instance-profile"
   role = aws_iam_role.ec2_role.name
 }
+```
 
+### O Bucket
+
+Uma vez que os roles são baseados nos agente e as policies dizem respeito aos alvos de ações entre intancias diferentes, não é necessario criar um role para o S3 Bucket, uma vez que ele é apena alvo, nunca agente na infraestrutura em questão.
+
+### O Pipeline
+
+```makefile
 resource "aws_iam_role" "codepipeline_role" {
-  name = "codepipeline-role"
+  name = "example-codepipeline-role"
 
   assume_role_policy = <<EOF
 {
@@ -78,11 +97,13 @@ resource "aws_iam_role" "codepipeline_role" {
 }
 EOF
 }
+```
 
+### O Build
 
-
+```makefile
 resource "aws_iam_role" "codebuild_role" {
-  name = "codebuild-role"
+  name = "example-codebuild-role"
 
   assume_role_policy = <<EOF
 {
@@ -99,9 +120,13 @@ resource "aws_iam_role" "codebuild_role" {
 }
 EOF
 }
+```
 
+### O Deploy
+
+```makefile
 resource "aws_iam_role" "codedeploy_role" {
-  name = "codedeploy-role"
+  name = "example-codedeploy-role"
 
   assume_role_policy = <<EOF
 {
@@ -113,56 +138,22 @@ resource "aws_iam_role" "codedeploy_role" {
         "Service": "codedeploy.amazonaws.com"
       },
       "Action": "sts:AssumeRole"
-    },
-    {
-      "Sid": "",
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
     }
   ]
 }
 EOF
 }
+```
 
+## Policies
 
+### S3 Bucket
 
-resource "aws_iam_policy" "codebuild_policy" {
-  name        = "codebuild-policy"
-  description = "Permissions for CodePipeline and CodeBuild"
+A *policy* do S3 defini quais acessos podem ser feitos dentro da pasta, como read e write, mas é importante notar que a tag  *Resource* limita esse acesso a um unico objeto, nese caso, definido pelo criado no projeto, impedindo que outros projetos e instancias leiam, ou ainda, alterem, a pasta utilizada pelo pipeline
 
-  policy = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "AllowCodePipelineAccess",
-      "Effect": "Allow",
-      "Action": [
-        "codepipeline:PutJobSuccessResult",
-        "codepipeline:PutJobFailureResult"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "AllowCodeBuildAccess",
-      "Effect": "Allow",
-      "Action": [
-        "codebuild:BatchGetBuilds",
-        "codebuild:StartBuild"
-      ],
-      "Resource": "arn:aws:codebuild:us-east-1:920358117159:project/codebuild-project"
-    }
-  ]
-}
-EOF
-}
-
-
+```makefile
 resource "aws_iam_policy" "s3_policy" {
-  name        = "codepipeline-s3-policy"
+  name        = "example-codepipeline-s3-policy"
   description = "Permissions for CodePipeline to access S3 artifacts bucket"
 
   policy = <<EOF
@@ -189,32 +180,52 @@ resource "aws_iam_policy" "s3_policy" {
 }
 EOF
 }
+```
 
-resource "aws_iam_policy" "cloudwatch_policy" {
-  name        = "cloudwatch-policy"
-  description = "Permissions for CodeBuild to create CloudWatch Logs log streams"
+### Build
+
+A política permite informar resultados de sucesso ou falha de execuções no CodePipeline e realizar ações específicas no CodeBuild, como buscar e iniciar builds.
+
+```makefile
+resource "aws_iam_policy" "codebuild_policy" {
+  name        = "example-codebuild-policy"
+  description = "Permissions for CodePipeline and CodeBuild"
 
   policy = <<EOF
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AllowCloudWatchLogs",
+      "Sid": "AllowCodePipelineAccess",
       "Effect": "Allow",
       "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
+        "codepipeline:PutJobSuccessResult",
+        "codepipeline:PutJobFailureResult"
       ],
       "Resource": "*"
+    },
+    {
+      "Sid": "AllowCodeBuildAccess",
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:BatchGetBuilds",
+        "codebuild:StartBuild"
+      ],
+      "Resource": "arn:aws:codebuild:us-east-1:920358117159:project/example-codebuild-project"
     }
   ]
 }
 EOF
 }
+```
 
+### Deploy
+
+O deploy deve acessar artefatos no S3, realizar escritas e execuções relacionadas à EC2. A 
+
+```makefile
 resource "aws_iam_policy" "codedeploy_policy" {
-  name        = "codedeploy-policy"
+  name        = "example-codedeploy-policy"
   description = "Permissions for CodeDeploy to access artifacts"
 
   policy = <<EOF
@@ -265,9 +276,15 @@ resource "aws_iam_policy" "codedeploy_policy" {
 }
 EOF
 }
+```
 
+### Pipeline
+
+A politica do pipelie possui uma permição para cada uma de suas fases, primeiramente autorizando a conexção com o github, seguido do acesso ao CodeBuild e CodeDeploy
+
+```makefile
 resource "aws_iam_policy" "codepipeline_policy" {
-  name        = "codepipeline-policy"
+  name        = "example-codepipeline-policy"
   description = "Permissions for CodePipeline"
 
   policy = <<EOF
@@ -293,16 +310,22 @@ resource "aws_iam_policy" "codepipeline_policy" {
       "Sid": "AllowCodeBuildProjectAccess",
       "Effect": "Allow",
       "Action": "codestar-connections:UseConnection",
-      "Resource": "arn:aws:codebuild:us-east-1:920358117159:project/codebuild-project"
+      "Resource": "arn:aws:codebuild:us-east-1:920358117159:project/example-codebuild-project"
     }
   ]
 }
 EOF
 }
+```
 
+### ECR
+
+A politica concede permissões para realizar ações no Amazon Elastic Container Registry (ECR), host do container utilizado pelo CodeBuild. 
+
+```makefile
 resource "aws_iam_policy" "ecr_policy" {
-  name        = "ecr-policy"
-  description = "Policy to allow ECR actions for codebuild-role"
+  name        = "example-ecr-policy"
+  description = "Policy to allow ECR actions for example-codebuild-role"
 
   policy = <<EOF
 {
@@ -331,8 +354,13 @@ resource "aws_iam_policy" "ecr_policy" {
 }
 EOF
 }
+```
 
+## Attachment
 
+Por fim, precisamos apenas linkar as devidas policies aos roles que as utilizam, infelizmente por esse metudo cada par politica-papel tem que receber uma criação indivudal, mas torna mais claro quais atribuições foram feitas.
+
+```
 resource "aws_iam_role_policy_attachment" "pipeline_s3_attachment" {
   role       = aws_iam_role.codepipeline_role.name
   policy_arn = aws_iam_policy.s3_policy.arn
@@ -363,7 +391,6 @@ resource "aws_iam_role_policy_attachment" "deploy_s3_attachment" {
   policy_arn = aws_iam_policy.s3_policy.arn
 }
 
-
 resource "aws_iam_role_policy_attachment" "deploy_attachment" {
   role       = aws_iam_role.codedeploy_role.name
   policy_arn = aws_iam_policy.codedeploy_policy.arn
@@ -392,153 +419,4 @@ resource "aws_iam_role_policy_attachment" "ec2_s3_attachment" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.s3_policy.arn
 }
-
-
-#BUCKET
-resource "aws_s3_bucket" "artifacts_bucket" {
-  bucket = "example-codepipeline-artifacts"
-  force_destroy = true
-}
-
-
-#EC2
-resource "aws_instance" "intancia_ec2" {
-  ami           = "ami-016048c3d1d2a393b"  # Replace with the desired AMI ID
-  instance_type = "t2.micro"                # Replace with the desired instance type
-  iam_instance_profile = aws_iam_instance_profile.instance_profile.name
-  #atribui o role ao ec2
-  
-
-  vpc_security_group_ids = [aws_security_group.sec_grp.id]
-
-  tags = {
-    Name = "instance_pipeline"
-  }
-}
-
-
-#BUILD
-resource "aws_codebuild_project" "build_proj" {
-  name          = "codebuild-project"
-  description   = "Example CodeBuild project"
-  build_timeout = 300
-  service_role      = aws_iam_role.codebuild_role.arn
-
-
-  source {
-    type            = "CODEPIPELINE"
-    buildspec       = "buildspec.yml"  # Replace with the path to your buildspec file
-    report_build_status = true
-  }
-
-  environment {
-    compute_type    = "BUILD_GENERAL1_SMALL"
-    image           = "aws/codebuild/standard:6.0"
-    type            = "LINUX_CONTAINER"
-    privileged_mode = false
-  }
-
-artifacts {
-    type     = "CODEPIPELINE"
-    name     = "artifacts"  # Replace with your desired artifact name
-    namespace_type = "NONE"
-  }
-
-}
-
-
-
-
-resource "aws_codedeploy_app" "deploy_app" {
-  name = "deployapplication"
-  compute_platform = "Server"
-}
-
-resource "aws_codedeploy_deployment_group" "deploy_group" {
-  app_name               = aws_codedeploy_app.deploy_app.name
-  deployment_group_name  = "deployment-group"
-  service_role_arn       = aws_iam_role.codedeploy_role.arn
-  deployment_config_name = "CodeDeployDefault.OneAtATime"  # Choose the deployment configuration that suits your needs
-  
-  deployment_style {
-    deployment_type = "IN_PLACE"
-  }
-  ec2_tag_set {
-    ec2_tag_filter {
-      key   = "Name"
-      type  = "KEY_AND_VALUE"
-      value = aws_instance.intancia_ec2.tags.Name
-    }
-  }
-  auto_rollback_configuration {
-    enabled = true
-    events  = ["DEPLOYMENT_FAILURE"]
-  }
-
-}
-
-
-#PIPELINE
-resource "aws_codepipeline" "Pipeline" {
-  name     = "codepipeline"
-  role_arn = aws_iam_role.codepipeline_role.arn
-
-  artifact_store {
-    location = aws_s3_bucket.artifacts_bucket.bucket
-    type     = "S3"
-  }
-
-stage {
-    name = "Source"
-
-    action {
-      name             = "Source"
-      category         = "Source"
-      owner            = "AWS"
-      provider         = "CodeStarSourceConnection"
-      version          = "1"
-      output_artifacts = ["source"]
-
-      configuration = {
-        ConnectionArn    = "arn:aws:codestar-connections:us-east-1:920358117159:connection/fee01a51-f2c6-4e2f-b200-4eeeb39ede94"
-        FullRepositoryId = "Antonioarf/micro-api" ############################################################################
-        BranchName       = "master"
-      }
-    }
-  }
-
-  stage {
-    name = "Build"
-
-    action {
-      name            = "BuildAction"
-      category        = "Build"
-      owner           = "AWS"
-      provider        = "CodeBuild"
-      input_artifacts  = ["source"]
-      output_artifacts = ["build"]
-      version         = "1"
-
-      configuration = {
-        ProjectName = aws_codebuild_project.build_proj.name
-      }
-    }
-  }
-
- stage {
-    name = "Deploy"
-
-    action {
-      name            = "DeployAction"
-      category        = "Deploy"
-      owner           = "AWS"
-      provider        = "CodeDeploy"
-      version         = "1"
-      input_artifacts  = ["build"]
-      configuration = {
-        ApplicationName    = aws_codedeploy_app.deploy_app.name
-        DeploymentGroupName = aws_codedeploy_deployment_group.deploy_group.deployment_group_name
-      }
-    }
-  }
-}
+```
