@@ -33,6 +33,15 @@ Terraform apply #para subir e criar os componentes na AWS
 
 Terraform destroy #para limpar apagar ou desativar componentes criados no comando anterior 
 
+
+# Implementação
+
+[Pipeline](Pipeline.md)
+
+[Dependencias](Dependencias.md)
+
+[Permições](Permicoes.md)
+
 ## DashBoard
 
 A AWS oferece também seu dashboard para a interação com seus produtos, é interessante seu uso para acompanhar a implementação e entender possiveis modificaçãoes a serem feitas no codigo.
@@ -42,11 +51,3 @@ A AWS oferece também seu dashboard para a interação com seus produtos, é int
 ![Screenshot from 2023-05-26 19-17-12.png](imgs/Screenshot_from_2023-05-26_19-17-12.png)
 
 ![Screenshot from 2023-05-26 19-14-02.png](imgs/Screenshot_from_2023-05-26_19-14-02.png)
-
-# Sobre a Implementação
-
-[Pipeline](Pipeline.md)
-
-[Dependencias](Dependencias.md)
-
-[Permições](Permicoes.md)
